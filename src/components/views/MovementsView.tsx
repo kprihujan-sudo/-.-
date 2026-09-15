@@ -10,13 +10,17 @@ import {
   User,
   FileText,
   Search,
+  Edit3,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
+import { BorrowRecord } from '../../types';
 import { formatThaiDate } from '../../utils/thaiFiscal';
+import { EditBorrowModal } from '../modals/EditBorrowModal';
 
 export const MovementsView: React.FC = () => {
   const { borrowRecords, addBorrowRecord, returnAsset, assets, currentUser } = useApp();
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [editingRecord, setEditingRecord] = useState<BorrowRecord | null>(null);
 
   // Form State
   const [selectedAssetId, setSelectedAssetId] = useState<number>(assets[0]?.id || 0);
@@ -121,14 +125,24 @@ export const MovementsView: React.FC = () => {
                     )}
                   </td>
                   <td className="p-3 text-center">
-                    {item.status !== 'RETURNED' && (
+                    <div className="flex items-center justify-center gap-1.5">
+                      {item.status !== 'RETURNED' && (
+                        <button
+                          onClick={() => returnAsset(item.id)}
+                          className="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-semibold transition-colors"
+                        >
+                          รับคืนพัสดุ
+                        </button>
+                      )}
                       <button
-                        onClick={() => returnAsset(item.id)}
-                        className="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-lg font-semibold transition-colors"
+                        onClick={() => setEditingRecord(item)}
+                        className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg inline-flex items-center gap-1 font-semibold transition-colors"
+                        title="แก้ไขใบยืม"
                       >
-                        รับคืนพัสดุ
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>แก้ไข</span>
                       </button>
-                    )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -230,6 +244,14 @@ export const MovementsView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Edit Borrow Modal */}
+      {editingRecord && (
+        <EditBorrowModal
+          record={editingRecord}
+          onClose={() => setEditingRecord(null)}
+        />
       )}
     </div>
   );

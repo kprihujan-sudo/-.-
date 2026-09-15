@@ -17,6 +17,7 @@ import {
   Trash2,
   ArrowUpDown,
   Tag,
+  Edit3,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { Asset, AssetStatus } from '../../types';
@@ -28,6 +29,7 @@ export const AssetListView: React.FC = () => {
     searchQuery,
     setSearchQuery,
     setSelectedAssetForDetail,
+    setAssetToEdit,
     setIsCreateModalOpen,
   } = useApp();
 
@@ -327,13 +329,22 @@ export const AssetListView: React.FC = () => {
                       </td>
 
                       <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
-                        <button
-                          onClick={() => setSelectedAssetForDetail(asset)}
-                          className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
-                          title="ดูรายละเอียดการ์ดครุภัณฑ์ & ตารางค่าเสื่อม"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1">
+                          <button
+                            onClick={() => setSelectedAssetForDetail(asset)}
+                            className="p-1.5 text-slate-500 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="ดูรายละเอียดการ์ดครุภัณฑ์ & ตารางค่าเสื่อม"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setAssetToEdit(asset)}
+                            className="p-1.5 text-amber-600 hover:text-amber-800 hover:bg-amber-50 rounded-lg transition-colors"
+                            title="แก้ไขข้อมูลครุภัณฑ์"
+                          >
+                            <Edit3 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );

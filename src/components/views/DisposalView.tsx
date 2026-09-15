@@ -8,14 +8,17 @@ import {
   FileText,
   AlertTriangle,
   User,
+  Edit3,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { DisposalMethod } from '../../types';
+import { DisposalMethod, DisposalRecord } from '../../types';
 import { formatCurrency, formatNumber, formatThaiDate } from '../../utils/thaiFiscal';
+import { EditDisposalModal } from '../modals/EditDisposalModal';
 
 export const DisposalView: React.FC = () => {
   const { disposalRecords, proposeDisposal, approveDisposal, assets, currentUser } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<DisposalRecord | null>(null);
 
   const [selectedAssetId, setSelectedAssetId] = useState<number>(assets[0]?.id || 0);
   const [method, setMethod] = useState<DisposalMethod>('DESTROY');
@@ -95,15 +98,25 @@ export const DisposalView: React.FC = () => {
                   เสนอเมื่อ {formatThaiDate(item.proposedDate)}
                 </span>
               </div>
-              <span
-                className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
-                  item.status === 'APPROVED'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-amber-100 text-amber-800'
-                }`}
-              >
-                {item.status === 'APPROVED' ? 'อนุมัติจำหน่ายแล้ว' : 'รอสอบหาข้อเท็จจริง'}
-              </span>
+              <div className="flex items-center gap-2">
+                <span
+                  className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold ${
+                    item.status === 'APPROVED'
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  {item.status === 'APPROVED' ? 'อนุมัติจำหน่ายแล้ว' : 'รอสอบหาข้อเท็จจริง'}
+                </span>
+                <button
+                  onClick={() => setEditingRecord(item)}
+                  className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors inline-flex items-center gap-1 font-semibold text-[11px]"
+                  title="แก้ไขรายการขอจำหน่าย"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>แก้ไข</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -215,6 +228,14 @@ export const DisposalView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* Edit Disposal Modal */}
+      {editingRecord && (
+        <EditDisposalModal
+          record={editingRecord}
+          onClose={() => setEditingRecord(null)}
+        />
       )}
     </div>
   );

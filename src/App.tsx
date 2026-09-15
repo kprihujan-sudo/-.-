@@ -18,6 +18,7 @@ import { ReportsView } from './components/views/ReportsView';
 import { RoadmapView } from './components/views/RoadmapView';
 import { AssetCreateWizard } from './components/modals/AssetCreateWizard';
 import { AssetDetailModal } from './components/modals/AssetDetailModal';
+import { AssetEditModal } from './components/modals/AssetEditModal';
 import { LoginModal } from './components/modals/LoginModal';
 
 const MainLayout: React.FC = () => {
@@ -68,6 +69,7 @@ const MainLayout: React.FC = () => {
       {/* Modals */}
       <AssetCreateWizard />
       <AssetDetailModal />
+      <AssetEditModal />
       <LoginModal />
     </div>
   );

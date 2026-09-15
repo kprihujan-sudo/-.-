@@ -14,10 +14,12 @@ import {
   User,
   ShieldCheck,
   Sparkles,
+  Edit3,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { FoundStatus } from '../../types';
+import { FoundStatus, InventoryCountRecord } from '../../types';
 import { formatThaiDate } from '../../utils/thaiFiscal';
+import { EditInventoryCountModal } from '../modals/EditInventoryCountModal';
 
 export const InventoryCountView: React.FC = () => {
   const {
@@ -33,6 +35,7 @@ export const InventoryCountView: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'scan' | 'checklist' | 'variance'>('scan');
   const [selectedAssetId, setSelectedAssetId] = useState<number>(assets[0]?.id || 0);
+  const [editingCountRecord, setEditingCountRecord] = useState<InventoryCountRecord | null>(null);
   const [foundStatus, setFoundStatus] = useState<FoundStatus>('FOUND');
   const [actualLocation, setActualLocation] = useState<string>('');
   const [countRemark, setCountRemark] = useState<string>('');
@@ -466,6 +469,7 @@ export const InventoryCountView: React.FC = () => {
               <tbody className="divide-y divide-slate-100">
                 {assets.map((asset) => {
                   const isCounted = countedIds.has(asset.id);
+                  const countRecord = inventoryCounts.find((c) => c.assetId === asset.id);
                   return (
                     <tr key={asset.id} className="hover:bg-slate-50">
                       <td className="p-3">
@@ -484,15 +488,27 @@ export const InventoryCountView: React.FC = () => {
                       <td className="p-3 text-slate-600">{asset.locationPath}</td>
                       <td className="p-3 text-slate-600">{asset.custodianName}</td>
                       <td className="p-3 text-center">
-                        <button
-                          onClick={() => {
-                            setSelectedAssetId(asset.id);
-                            setActiveTab('scan');
-                          }}
-                          className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-semibold"
-                        >
-                          บันทึกตรวจนับ
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          {isCounted && countRecord && (
+                            <button
+                              onClick={() => setEditingCountRecord(countRecord)}
+                              className="px-2 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 rounded-lg font-semibold inline-flex items-center gap-1 transition-colors"
+                              title="แก้ไขผลตรวจนับ"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                              <span>แก้ไข</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => {
+                              setSelectedAssetId(asset.id);
+                              setActiveTab('scan');
+                            }}
+                            className="px-2.5 py-1 bg-blue-50 text-blue-700 hover:bg-blue-100 rounded-lg font-semibold transition-colors"
+                          >
+                            {isCounted ? 'นับซ้ำ' : 'บันทึกตรวจนับ'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -537,7 +553,97 @@ export const InventoryCountView: React.FC = () => {
               </p>
             </div>
           </div>
+
+          {/* Variance items list with edit button */}
+          <div className="mt-4 border border-slate-200 rounded-xl overflow-hidden">
+            <div className="p-3 bg-slate-50 border-b border-slate-200 font-bold text-slate-800 flex items-center justify-between">
+              <span>รายการครุภัณฑ์ที่มีผลต่าง/ปัญหาจากการตรวจนับ</span>
+              <span className="text-[11px] text-slate-500 font-normal">
+                สามารถคลิกแก้ไขเพื่ออัปเดตข้อมูลให้ถูกต้องได้
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-slate-50/50 text-slate-500 font-semibold border-b border-slate-200 text-[11px]">
+                    <th className="p-2.5">เลขครุภัณฑ์</th>
+                    <th className="p-2.5">รายการ</th>
+                    <th className="p-2.5">สถานะผลต่าง</th>
+                    <th className="p-2.5">สถานที่ตามทะเบียน → สถานที่จริง</th>
+                    <th className="p-2.5">หมายเหตุ</th>
+                    <th className="p-2.5 text-center">จัดการ</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {inventoryCounts
+                    .filter(
+                      (c) =>
+                        c.foundStatus !== 'FOUND' ||
+                        c.expectedLocation.trim() !== c.actualLocation.trim()
+                    )
+                    .map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-50">
+                        <td className="p-2.5 font-mono text-blue-900 font-medium">
+                          {item.assetNo}
+                        </td>
+                        <td className="p-2.5 font-medium text-slate-900">{item.assetName}</td>
+                        <td className="p-2.5">
+                          {item.foundStatus === 'NOT_FOUND' && (
+                            <span className="bg-rose-100 text-rose-800 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              ไม่พบตัวครุภัณฑ์
+                            </span>
+                          )}
+                          {item.foundStatus === 'DAMAGED' && (
+                            <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              ชำรุด/เสื่อมสภาพ
+                            </span>
+                          )}
+                          {item.foundStatus === 'OBSOLETE' && (
+                            <span className="bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                              หมดความจำเป็น
+                            </span>
+                          )}
+                          {item.foundStatus === 'FOUND' &&
+                            item.expectedLocation.trim() !== item.actualLocation.trim() && (
+                              <span className="bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full text-[10px] font-bold">
+                                สถานที่คลาดเคลื่อน
+                              </span>
+                            )}
+                        </td>
+                        <td className="p-2.5 text-slate-600">
+                          <span>{item.expectedLocation}</span>
+                          <span className="mx-1 text-slate-400">→</span>
+                          <span className="font-semibold text-slate-900">
+                            {item.actualLocation}
+                          </span>
+                        </td>
+                        <td className="p-2.5 text-slate-500 max-w-xs truncate">
+                          {item.remark || '-'}
+                        </td>
+                        <td className="p-2.5 text-center">
+                          <button
+                            onClick={() => setEditingCountRecord(item)}
+                            className="px-2.5 py-1 bg-amber-50 text-amber-800 hover:bg-amber-100 rounded-lg font-semibold inline-flex items-center gap-1 transition-colors text-[11px]"
+                          >
+                            <Edit3 className="w-3 h-3" />
+                            <span>แก้ไข</span>
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Edit Inventory Count Modal */}
+      {editingCountRecord && (
+        <EditInventoryCountModal
+          record={editingCountRecord}
+          onClose={() => setEditingCountRecord(null)}
+        />
       )}
     </div>
   );

@@ -12,10 +12,13 @@ import {
   Building,
   User,
   ExternalLink,
+  Edit3,
 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
-import { MaintenanceJob, MaintenanceUrgency } from '../../types';
+import { MaintenanceJob, MaintenanceUrgency, MaintenanceSchedule } from '../../types';
 import { formatCurrency, formatThaiDate } from '../../utils/thaiFiscal';
+import { EditMaintenanceJobModal } from '../modals/EditMaintenanceJobModal';
+import { EditMaintenanceScheduleModal } from '../modals/EditMaintenanceScheduleModal';
 
 export const MaintenanceView: React.FC = () => {
   const {
@@ -28,6 +31,8 @@ export const MaintenanceView: React.FC = () => {
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'tickets' | 'schedules' | 'newTicket'>('tickets');
+  const [editingJob, setEditingJob] = useState<MaintenanceJob | null>(null);
+  const [editingSchedule, setEditingSchedule] = useState<MaintenanceSchedule | null>(null);
 
   // Form State for new repair job
   const [selectedAssetId, setSelectedAssetId] = useState<number>(assets[0]?.id || 0);
@@ -200,6 +205,13 @@ export const MaintenanceView: React.FC = () => {
                       >
                         {job.status === 'COMPLETED' ? 'ซ่อมเสร็จสิ้น' : 'กำลังดำเนินการ'}
                       </span>
+                      <button
+                        onClick={() => setEditingJob(job)}
+                        className="p-1 text-slate-400 hover:text-amber-700 hover:bg-amber-50 rounded-lg transition-colors ml-1"
+                        title="แก้ไขใบแจ้งซ่อม"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
 
@@ -340,6 +352,7 @@ export const MaintenanceView: React.FC = () => {
                   <th className="p-3">กำหนดรอบถัดไป</th>
                   <th className="p-3">สถานะเตือน</th>
                   <th className="p-3">ผู้รับผิดชอบ</th>
+                  <th className="p-3 text-center">จัดการ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -376,6 +389,16 @@ export const MaintenanceView: React.FC = () => {
                       )}
                     </td>
                     <td className="p-3 text-slate-700">{sch.assignedVendorOrStaff}</td>
+                    <td className="p-3 text-center">
+                      <button
+                        onClick={() => setEditingSchedule(sch)}
+                        className="p-1.5 text-amber-700 hover:bg-amber-50 rounded-lg transition-colors inline-flex items-center gap-1 font-semibold"
+                        title="แก้ไขแผนบำรุงรักษา"
+                      >
+                        <Edit3 className="w-3.5 h-3.5" />
+                        <span>แก้ไข</span>
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -495,6 +518,21 @@ export const MaintenanceView: React.FC = () => {
             </div>
           </form>
         </div>
+      )}
+
+      {/* Edit Maintenance Modals */}
+      {editingJob && (
+        <EditMaintenanceJobModal
+          job={editingJob}
+          onClose={() => setEditingJob(null)}
+        />
+      )}
+
+      {editingSchedule && (
+        <EditMaintenanceScheduleModal
+          schedule={editingSchedule}
+          onClose={() => setEditingSchedule(null)}
+        />
       )}
     </div>
   );

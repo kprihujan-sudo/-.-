@@ -57,9 +57,12 @@ interface AppContextType {
   deleteAsset: (id: number, reason: string) => void;
   
   addMaintenanceJob: (job: Omit<MaintenanceJob, 'id' | 'ticketNo' | 'reportedAt'>) => MaintenanceJob;
+  updateMaintenanceJob: (id: number, updates: Partial<MaintenanceJob>) => void;
   updateMaintenanceStatus: (jobId: number, status: MaintenanceJob['status'], actionTaken?: string, cost?: number, photosAfter?: string[]) => void;
+  updateMaintenanceSchedule: (id: number, updates: Partial<MaintenanceSchedule>) => void;
   
   addBorrowRecord: (borrow: Omit<BorrowRecord, 'id' | 'docNo' | 'status'>) => void;
+  updateBorrowRecord: (id: number, updates: Partial<BorrowRecord>) => void;
   returnAsset: (borrowId: number) => void;
   
   addInventoryCount: (count: {
@@ -72,8 +75,10 @@ interface AppContextType {
     photos: string[];
     remark?: string;
   }) => void;
+  updateInventoryCount: (id: string, updates: Partial<InventoryCountRecord>) => void;
 
   proposeDisposal: (disposal: Omit<DisposalRecord, 'id' | 'docNo' | 'proposedDate' | 'status'>) => void;
+  updateDisposalRecord: (id: number, updates: Partial<DisposalRecord>) => void;
   approveDisposal: (disposalId: number) => void;
 
   syncOfflineData: () => Promise<{ success: boolean; count: number }>;
@@ -94,6 +99,8 @@ interface AppContextType {
   setActiveView: (view: string) => void;
   selectedAssetForDetail: Asset | null;
   setSelectedAssetForDetail: (asset: Asset | null) => void;
+  assetToEdit: Asset | null;
+  setAssetToEdit: (asset: Asset | null) => void;
   isCreateModalOpen: boolean;
   setIsCreateModalOpen: (open: boolean) => void;
   isPrioritizationModalOpen: boolean;
@@ -108,6 +115,7 @@ const LOCAL_STORAGE_KEY_MAINTENANCE = 'satun_asset_registry_maint_v2';
 const LOCAL_STORAGE_KEY_COUNTS = 'satun_asset_registry_counts_v2';
 const LOCAL_STORAGE_KEY_BORROWS = 'satun_asset_registry_borrows_v2';
 const LOCAL_STORAGE_KEY_DISPOSALS = 'satun_asset_registry_disposals_v2';
+const LOCAL_STORAGE_KEY_SCHEDULES = 'satun_asset_registry_schedules_v2';
 const LOCAL_STORAGE_KEY_OFFLINE_QUEUE = 'satun_asset_registry_offline_queue_v2';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -138,6 +146,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeView, setActiveView] = useState<string>('dashboard');
   const [selectedAssetForDetail, setSelectedAssetForDetail] = useState<Asset | null>(null);
+  const [assetToEdit, setAssetToEdit] = useState<Asset | null>(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState<boolean>(false);
   const [isPrioritizationModalOpen, setIsPrioritizationModalOpen] = useState<boolean>(false);
 
@@ -162,7 +171,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : INITIAL_MAINTENANCE_JOBS;
   });
 
-  const [maintenanceSchedules, setMaintenanceSchedules] = useState<MaintenanceSchedule[]>(INITIAL_SCHEDULES);
+  const [maintenanceSchedules, setMaintenanceSchedules] = useState<MaintenanceSchedule[]>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY_SCHEDULES);
+    return saved ? JSON.parse(saved) : INITIAL_SCHEDULES;
+  });
 
   const [borrowRecords, setBorrowRecords] = useState<BorrowRecord[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY_BORROWS);
@@ -197,6 +209,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY_MAINTENANCE, JSON.stringify(maintenanceJobs));
   }, [maintenanceJobs]);
+
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY_SCHEDULES, JSON.stringify(maintenanceSchedules));
+  }, [maintenanceSchedules]);
 
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY_BORROWS, JSON.stringify(borrowRecords));
@@ -397,8 +413,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Action: Update Asset
   const updateAsset = (id: number, updates: Partial<Asset>) => {
     setRawAllAssets((prev) =>
-      prev.map((asset) => (asset.id === id ? { ...asset, ...updates } : asset))
+      prev.map((asset) => {
+        if (asset.id !== id) return asset;
+        const updated = { ...asset, ...updates };
+        if (updates.unitCost !== undefined || updates.quantity !== undefined) {
+          const uCost = updates.unitCost !== undefined ? updates.unitCost : asset.unitCost;
+          const qty = updates.quantity !== undefined ? updates.quantity : asset.quantity;
+          updated.totalCost = uCost * qty;
+        }
+        if (updates.building !== undefined || updates.floor !== undefined || updates.room !== undefined) {
+          const b = updates.building !== undefined ? updates.building : asset.building;
+          const f = updates.floor !== undefined ? updates.floor : asset.floor;
+          const r = updates.room !== undefined ? updates.room : asset.room;
+          updated.locationPath = `${b} > ชั้น ${f} > ห้อง ${r}`;
+        }
+        return updated;
+      })
     );
+    setSelectedAssetForDetail((prev) => (prev && prev.id === id ? { ...prev, ...updates } : prev));
   };
 
   // Action: Delete Asset (Soft delete / audit)
@@ -472,6 +504,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  // Action: Update Maintenance Job Record (Edit any field)
+  const updateMaintenanceJob = (id: number, updates: Partial<MaintenanceJob>) => {
+    setMaintenanceJobs((prev) =>
+      prev.map((job) => (job.id === id ? { ...job, ...updates } : job))
+    );
+    if (updates.status === 'COMPLETED') {
+      const job = maintenanceJobs.find((j) => j.id === id);
+      if (job) {
+        updateAsset(job.assetId, { status: 'IN_USE' });
+      }
+    } else if (updates.status === 'IN_PROGRESS' || updates.status === 'OPEN') {
+      const job = maintenanceJobs.find((j) => j.id === id);
+      if (job && job.jobType === 'REPAIR') {
+        updateAsset(job.assetId, { status: 'REPAIR' });
+      }
+    }
+  };
+
+  // Action: Update Maintenance Schedule (PM / Calibration)
+  const updateMaintenanceSchedule = (id: number, updates: Partial<MaintenanceSchedule>) => {
+    setMaintenanceSchedules((prev) =>
+      prev.map((sched) => (sched.id === id ? { ...sched, ...updates } : sched))
+    );
+  };
+
   // Action: Borrow Record
   const addBorrowRecord = (borrowData: Omit<BorrowRecord, 'id' | 'docNo' | 'status'>) => {
     const newId = Date.now();
@@ -498,6 +555,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setBorrowRecords((prev) => [newBorrow, ...prev]);
     updateAsset(borrowData.assetId, { status: 'BORROWED' });
+  };
+
+  // Action: Update Borrow Record
+  const updateBorrowRecord = (id: number, updates: Partial<BorrowRecord>) => {
+    setBorrowRecords((prev) =>
+      prev.map((rec) => (rec.id === id ? { ...rec, ...updates } : rec))
+    );
+    if (updates.status === 'RETURNED') {
+      const rec = borrowRecords.find((b) => b.id === id);
+      if (rec) {
+        updateAsset(rec.assetId, { status: 'IN_USE' });
+      }
+    } else if (updates.status === 'BORROWED' || updates.status === 'OVERDUE') {
+      const rec = borrowRecords.find((b) => b.id === id);
+      if (rec) {
+        updateAsset(rec.assetId, { status: 'BORROWED' });
+      }
+    }
   };
 
   // Action: Return Asset
@@ -558,6 +633,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  // Action: Update Inventory Count Record
+  const updateInventoryCount = (id: string, updates: Partial<InventoryCountRecord>) => {
+    setInventoryCounts((prev) =>
+      prev.map((cnt) => (cnt.id === id ? { ...cnt, ...updates } : cnt))
+    );
+    if (updates.foundStatus) {
+      const cnt = inventoryCounts.find((c) => c.id === id);
+      if (cnt) {
+        const newAssetStatus =
+          updates.foundStatus === 'DAMAGED'
+            ? 'DAMAGED'
+            : updates.foundStatus === 'NOT_FOUND'
+            ? 'LOST'
+            : 'IN_USE';
+        updateAsset(cnt.assetId, { status: newAssetStatus });
+      }
+    }
+  };
+
   // Action: Propose Disposal
   const proposeDisposal = (data: Omit<DisposalRecord, 'id' | 'docNo' | 'proposedDate' | 'status'>) => {
     const newId = Date.now();
@@ -572,6 +666,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     setDisposalRecords((prev) => [newDisposal, ...prev]);
     updateAsset(data.assetId, { status: 'PENDING_DISPOSAL' });
+  };
+
+  // Action: Update Disposal Record
+  const updateDisposalRecord = (id: number, updates: Partial<DisposalRecord>) => {
+    setDisposalRecords((prev) =>
+      prev.map((disp) => (disp.id === id ? { ...disp, ...updates } : disp))
+    );
+    if (updates.status === 'APPROVED') {
+      const disp = disposalRecords.find((d) => d.id === id);
+      if (disp) {
+        updateAsset(disp.assetId, { status: 'DISPOSED' });
+      }
+    }
   };
 
   // Action: Approve Disposal
@@ -648,12 +755,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addAsset,
         updateAsset,
         deleteAsset,
+        assetToEdit,
+        setAssetToEdit,
         addMaintenanceJob,
+        updateMaintenanceJob,
         updateMaintenanceStatus,
+        updateMaintenanceSchedule,
         addBorrowRecord,
+        updateBorrowRecord,
         returnAsset,
         addInventoryCount,
+        updateInventoryCount,
         proposeDisposal,
+        updateDisposalRecord,
         approveDisposal,
         syncOfflineData,
         clearOfflineQueue,
