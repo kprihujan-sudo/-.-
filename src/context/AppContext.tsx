@@ -10,6 +10,8 @@ import {
   InventoryCountRecord,
   OfflineQueueItem,
   FoundStatus,
+  SATUN_ORGANIZATIONS,
+  Organization,
 } from '../types';
 import {
   INITIAL_ASSETS,
@@ -30,11 +32,24 @@ interface AppContextType {
   setIsOffline: (offline: boolean) => void;
   offlineQueue: OfflineQueueItem[];
   assets: Asset[];
+  rawAllAssets: Asset[];
   maintenanceJobs: MaintenanceJob[];
   maintenanceSchedules: MaintenanceSchedule[];
   borrowRecords: BorrowRecord[];
   disposalRecords: DisposalRecord[];
   inventoryCounts: InventoryCountRecord[];
+
+  // Organization & Department Access Control
+  organizations: Organization[];
+  selectedOrgFilter: string;
+  setSelectedOrgFilter: (orgId: string) => void;
+  selectedDeptFilter: string;
+  setSelectedDeptFilter: (dept: string) => void;
+  isAdminUser: boolean;
+  isLoginModalOpen: boolean;
+  setIsLoginModalOpen: (open: boolean) => void;
+  login: (user: UserProfile) => void;
+  logout: () => void;
   
   // Actions
   addAsset: (asset: Omit<Asset, 'id' | 'assetNo' | 'qrToken' | 'status' | 'accumulatedDep' | 'netBookValue'>) => Asset;
@@ -87,16 +102,38 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY_ASSETS = 'thai_asset_registry_assets_v1';
-const LOCAL_STORAGE_KEY_MAINTENANCE = 'thai_asset_registry_maint_v1';
-const LOCAL_STORAGE_KEY_COUNTS = 'thai_asset_registry_counts_v1';
-const LOCAL_STORAGE_KEY_BORROWS = 'thai_asset_registry_borrows_v1';
-const LOCAL_STORAGE_KEY_DISPOSALS = 'thai_asset_registry_disposals_v1';
-const LOCAL_STORAGE_KEY_OFFLINE_QUEUE = 'thai_asset_registry_offline_queue_v1';
+const LOCAL_STORAGE_KEY_USER = 'satun_asset_current_user_v2';
+const LOCAL_STORAGE_KEY_ASSETS = 'satun_asset_registry_assets_v2';
+const LOCAL_STORAGE_KEY_MAINTENANCE = 'satun_asset_registry_maint_v2';
+const LOCAL_STORAGE_KEY_COUNTS = 'satun_asset_registry_counts_v2';
+const LOCAL_STORAGE_KEY_BORROWS = 'satun_asset_registry_borrows_v2';
+const LOCAL_STORAGE_KEY_DISPOSALS = 'satun_asset_registry_disposals_v2';
+const LOCAL_STORAGE_KEY_OFFLINE_QUEUE = 'satun_asset_registry_offline_queue_v2';
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<UserProfile>(DEMO_USERS[0]);
-  const [currentOrg, setCurrentOrg] = useState<string>('โรงพยาบาลเมืองใหม่ สสจ.');
+  // Current logged in user (default to Super Admin of สสจ.สตูล)
+  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
+    const saved = localStorage.getItem(LOCAL_STORAGE_KEY_USER);
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return DEMO_USERS[0];
+      }
+    }
+    return DEMO_USERS[0];
+  });
+
+  const isAdminUser = Boolean(
+    currentUser.isAdmin ||
+    (currentUser.orgId === 'org-1' && (currentUser.role === 'SUPER_ADMIN' || currentUser.role === 'PURCHASING_HEAD'))
+  );
+
+  const [currentOrg, setCurrentOrg] = useState<string>(currentUser.orgName);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+  const [selectedOrgFilter, setSelectedOrgFilter] = useState<string>(() => (isAdminUser ? 'ALL' : currentUser.orgId));
+  const [selectedDeptFilter, setSelectedDeptFilter] = useState<string>('ALL');
+
   const [isOffline, setIsOffline] = useState<boolean>(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeView, setActiveView] = useState<string>('dashboard');
@@ -105,9 +142,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isPrioritizationModalOpen, setIsPrioritizationModalOpen] = useState<boolean>(false);
 
   // Initialize from LocalStorage or Fallback
-  const [assets, setAssets] = useState<Asset[]>(() => {
+  const [rawAllAssets, setRawAllAssets] = useState<Asset[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEY_ASSETS);
-    return saved ? JSON.parse(saved) : INITIAL_ASSETS;
+    if (saved) {
+      try {
+        const parsed: Asset[] = JSON.parse(saved);
+        if (parsed.length > 0 && parsed[0].orgId) {
+          return parsed;
+        }
+      } catch {
+        // fallback
+      }
+    }
+    return INITIAL_ASSETS;
   });
 
   const [maintenanceJobs, setMaintenanceJobs] = useState<MaintenanceJob[]>(() => {
@@ -137,10 +184,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Sync user state to storage
+  useEffect(() => {
+    localStorage.setItem(LOCAL_STORAGE_KEY_USER, JSON.stringify(currentUser));
+  }, [currentUser]);
+
   // Sync to LocalStorage on state change
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY_ASSETS, JSON.stringify(assets));
-  }, [assets]);
+    localStorage.setItem(LOCAL_STORAGE_KEY_ASSETS, JSON.stringify(rawAllAssets));
+  }, [rawAllAssets]);
 
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEY_MAINTENANCE, JSON.stringify(maintenanceJobs));
@@ -162,6 +214,87 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(LOCAL_STORAGE_KEY_OFFLINE_QUEUE, JSON.stringify(offlineQueue));
   }, [offlineQueue]);
 
+  // When user changes, update currentOrg and filter constraint
+  const login = (user: UserProfile) => {
+    setCurrentUser(user);
+    setCurrentOrg(user.orgName);
+    const isUserAdmin = Boolean(
+      user.isAdmin ||
+      (user.orgId === 'org-1' && (user.role === 'SUPER_ADMIN' || user.role === 'PURCHASING_HEAD'))
+    );
+    if (isUserAdmin) {
+      setSelectedOrgFilter('ALL');
+    } else {
+      setSelectedOrgFilter(user.orgId);
+    }
+    setSelectedDeptFilter('ALL');
+    setIsLoginModalOpen(false);
+  };
+
+  const logout = () => {
+    setIsLoginModalOpen(true);
+  };
+
+  // Synchronize when non-admin: always enforce their own org
+  useEffect(() => {
+    if (!isAdminUser && selectedOrgFilter !== currentUser.orgId) {
+      setSelectedOrgFilter(currentUser.orgId);
+      setCurrentOrg(currentUser.orgName);
+    }
+  }, [isAdminUser, currentUser.orgId, currentUser.orgName, selectedOrgFilter]);
+
+  // Filtered Assets based on RBAC & Department
+  const assets = useMemo(() => {
+    return rawAllAssets.filter((asset) => {
+      // 1. Organization filtering
+      if (isAdminUser) {
+        if (selectedOrgFilter !== 'ALL') {
+          const targetOrg = SATUN_ORGANIZATIONS.find((o) => o.id === selectedOrgFilter);
+          const matchOrg = asset.orgId === selectedOrgFilter || (targetOrg && asset.orgName === targetOrg.name);
+          if (!matchOrg) return false;
+        }
+      } else {
+        // Non-admin can ONLY view their own organization's assets
+        const matchOrg = asset.orgId === currentUser.orgId || asset.orgName === currentUser.orgName;
+        if (!matchOrg) return false;
+      }
+
+      // 2. Department filtering
+      if (selectedDeptFilter !== 'ALL' && asset.department !== selectedDeptFilter) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [rawAllAssets, isAdminUser, selectedOrgFilter, selectedDeptFilter, currentUser.orgId, currentUser.orgName]);
+
+  const accessibleAssetIds = useMemo(() => new Set(assets.map((a) => a.id)), [assets]);
+
+  // Filter maintenance jobs by accessible assets
+  const scopedMaintenanceJobs = useMemo(() => {
+    return maintenanceJobs.filter((j) => accessibleAssetIds.has(j.assetId));
+  }, [maintenanceJobs, accessibleAssetIds]);
+
+  // Filter schedules
+  const scopedMaintenanceSchedules = useMemo(() => {
+    return maintenanceSchedules.filter((s) => accessibleAssetIds.has(s.assetId));
+  }, [maintenanceSchedules, accessibleAssetIds]);
+
+  // Filter borrows
+  const scopedBorrowRecords = useMemo(() => {
+    return borrowRecords.filter((b) => accessibleAssetIds.has(b.assetId));
+  }, [borrowRecords, accessibleAssetIds]);
+
+  // Filter disposals
+  const scopedDisposalRecords = useMemo(() => {
+    return disposalRecords.filter((d) => accessibleAssetIds.has(d.assetId));
+  }, [disposalRecords, accessibleAssetIds]);
+
+  // Filter inventory counts
+  const scopedInventoryCounts = useMemo(() => {
+    return inventoryCounts.filter((c) => accessibleAssetIds.has(c.assetId));
+  }, [inventoryCounts, accessibleAssetIds]);
+
   // Handle Online Event auto-sync
   useEffect(() => {
     const handleOnline = () => {
@@ -182,10 +315,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [offlineQueue.length]);
 
-  // Compute Alerts
+  // Compute Alerts scoped to accessible assets
   const alerts = useMemo(() => {
-    const overdueBorrows = borrowRecords.filter((b) => b.status === 'OVERDUE').length;
-    const pmDueCount = maintenanceSchedules.filter((s) => s.isOverdue || s.daysUntilDue <= 30).length;
+    const overdueBorrows = scopedBorrowRecords.filter((b) => b.status === 'OVERDUE').length;
+    const pmDueCount = scopedMaintenanceSchedules.filter((s) => s.isOverdue || s.daysUntilDue <= 30).length;
     
     const now = new Date();
     const ninetyDaysLater = new Date();
@@ -197,9 +330,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return wDate > now && wDate <= ninetyDaysLater;
     }).length;
 
-    const countedAssetIds = new Set(inventoryCounts.map((c) => c.assetId));
+    const countedAssetIds = new Set(scopedInventoryCounts.map((c) => c.assetId));
     const uncountedCount = assets.filter((a) => !countedAssetIds.has(a.id)).length;
-    const pendingRepairCount = maintenanceJobs.filter((j) => j.status === 'OPEN' || j.status === 'IN_PROGRESS').length;
+    const pendingRepairCount = scopedMaintenanceJobs.filter((j) => j.status === 'OPEN' || j.status === 'IN_PROGRESS').length;
 
     const totalAlerts = overdueBorrows + pmDueCount + warrantyExpiringCount + pendingRepairCount;
 
@@ -211,14 +344,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       pendingRepairCount,
       totalAlerts,
     };
-  }, [borrowRecords, maintenanceSchedules, assets, inventoryCounts, maintenanceJobs]);
+  }, [scopedBorrowRecords, scopedMaintenanceSchedules, assets, scopedInventoryCounts, scopedMaintenanceJobs]);
 
   // Action: Add Asset
   const addAsset = (data: Omit<Asset, 'id' | 'assetNo' | 'qrToken' | 'status' | 'accumulatedDep' | 'netBookValue'>): Asset => {
     const newId = Date.now();
-    const runningNum = String(assets.length + 1).padStart(4, '0');
+    const runningNum = String(rawAllAssets.length + 1).padStart(4, '0');
     const fyShort = String(data.fiscalYear).slice(-2);
-    const assetNo = `10670-${data.categoryCode}-001-${runningNum}/${fyShort}`;
+
+    // Determine assigned organization
+    const assetOrgId = (isAdminUser && data.orgId) ? data.orgId : currentUser.orgId;
+    const targetOrg = SATUN_ORGANIZATIONS.find((o) => o.id === assetOrgId);
+    const assetOrgName = targetOrg ? targetOrg.name : currentUser.orgName;
+    const orgCode = targetOrg ? targetOrg.code : '91000';
+
+    const assetNo = `${orgCode}-${data.categoryCode}-001-${runningNum}/${fyShort}`;
     const qrToken = `qr-asset-${newId}`;
 
     let accumulatedDep = 0;
@@ -235,6 +375,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: 'IN_USE',
       accumulatedDep,
       netBookValue,
+      orgId: assetOrgId,
+      orgName: assetOrgName,
     };
 
     if (isOffline) {
@@ -248,20 +390,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setOfflineQueue((prev) => [...prev, queueItem]);
     }
 
-    setAssets((prev) => [newAsset, ...prev]);
+    setRawAllAssets((prev) => [newAsset, ...prev]);
     return newAsset;
   };
 
   // Action: Update Asset
   const updateAsset = (id: number, updates: Partial<Asset>) => {
-    setAssets((prev) =>
+    setRawAllAssets((prev) =>
       prev.map((asset) => (asset.id === id ? { ...asset, ...updates } : asset))
     );
   };
 
   // Action: Delete Asset (Soft delete / audit)
   const deleteAsset = (id: number, reason: string) => {
-    setAssets((prev) => prev.filter((a) => a.id !== id));
+    setRawAllAssets((prev) => prev.filter((a) => a.id !== id));
   };
 
   // Action: Add Maintenance Job
@@ -487,11 +629,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsOffline,
         offlineQueue,
         assets,
+        rawAllAssets,
         maintenanceJobs,
         maintenanceSchedules,
         borrowRecords,
         disposalRecords,
         inventoryCounts,
+        organizations: SATUN_ORGANIZATIONS,
+        selectedOrgFilter,
+        setSelectedOrgFilter,
+        selectedDeptFilter,
+        setSelectedDeptFilter,
+        isAdminUser,
+        isLoginModalOpen,
+        setIsLoginModalOpen,
+        login,
+        logout,
         addAsset,
         updateAsset,
         deleteAsset,

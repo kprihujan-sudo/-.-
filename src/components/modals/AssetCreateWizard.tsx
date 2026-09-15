@@ -23,11 +23,20 @@ import {
 } from '../../utils/thaiFiscal';
 
 export const AssetCreateWizard: React.FC = () => {
-  const { isCreateModalOpen, setIsCreateModalOpen, addAsset, assets, currentOrg } = useApp();
+  const {
+    isCreateModalOpen,
+    setIsCreateModalOpen,
+    addAsset,
+    assets,
+    currentUser,
+    isAdminUser,
+    organizations,
+  } = useApp();
 
   const [step, setStep] = useState<number>(1);
 
   // Form State
+  const [targetOrgId, setTargetOrgId] = useState<string>(currentUser.orgId || 'org-1');
   const [categoryCode, setCategoryCode] = useState<string>('6515');
   const [assetName, setAssetName] = useState<string>('');
   const [brand, setBrand] = useState<string>('');
@@ -47,12 +56,16 @@ export const AssetCreateWizard: React.FC = () => {
   const [vendorName, setVendorName] = useState<string>('บริษัท เมดิคอล แคร์ ซัพพลาย จำกัด');
   const [unitCost, setUnitCost] = useState<number>(18500);
 
+  const targetOrg = useMemo(() => {
+    return organizations.find((o) => o.id === targetOrgId) || organizations[0];
+  }, [organizations, targetOrgId]);
+
   const [building, setBuilding] = useState<string>('อาคารผู้ป่วยนอก (OPD)');
   const [floor, setFloor] = useState<string>('ชั้น 2');
   const [room, setRoom] = useState<string>('ห้องตรวจ 3');
-  const [department, setDepartment] = useState<string>('กลุ่มงานการพยาบาลผู้ป่วยนอก');
-  const [custodianName, setCustodianName] = useState<string>('นางสาวมาลี ใจดี');
-  const [custodianPosition, setCustodianPosition] = useState<string>('พยาบาลวิชาชีพชำนาญการ');
+  const [department, setDepartment] = useState<string>(currentUser.department || 'กลุ่มงานการพยาบาลผู้ป่วยนอก');
+  const [custodianName, setCustodianName] = useState<string>(currentUser.fullName || 'นางสาวมาลี ใจดี');
+  const [custodianPosition, setCustodianPosition] = useState<string>(currentUser.position || 'พยาบาลวิชาชีพชำนาญการ');
   const [warrantyEnd, setWarrantyEnd] = useState<string>('2027-01-24');
   const [remark, setRemark] = useState<string>('จัดซื้อตามแผนเงินบำรุงประจำปีงบประมาณ 2568');
 
@@ -108,6 +121,8 @@ export const AssetCreateWizard: React.FC = () => {
 
     addAsset({
       assetName,
+      orgId: targetOrg.id,
+      orgName: targetOrg.name,
       categoryCode,
       categoryName: selectedCategory.name,
       brand,
@@ -466,7 +481,89 @@ export const AssetCreateWizard: React.FC = () => {
           {/* STEP 3 */}
           {step === 3 && (
             <div className="space-y-4">
+              {/* Organization Assignment Banner */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                    <Building className="w-4 h-4 text-blue-700" />
+                    <span>สังกัดหน่วยงานผู้ถือกรรมสิทธิ์ (15 หน่วยงาน จ.สตูล) *</span>
+                  </label>
+                  {isAdminUser ? (
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                      Admin สสจ. เลือกหน่วยงานได้
+                    </span>
+                  ) : (
+                    <span className="text-[10px] bg-slate-200 text-slate-700 font-medium px-2 py-0.5 rounded">
+                      🔒 สิทธิ์บันทึกเฉพาะหน่วยงานตนเอง
+                    </span>
+                  )}
+                </div>
+
+                {isAdminUser ? (
+                  <select
+                    value={targetOrgId}
+                    onChange={(e) => {
+                      setTargetOrgId(e.target.value);
+                      const org = organizations.find((o) => o.id === e.target.value);
+                      if (org && org.departments.length > 0) {
+                        setDepartment(org.departments[0]);
+                      }
+                    }}
+                    className="w-full bg-white border border-slate-300 rounded-lg p-2 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-blue-600"
+                  >
+                    <optgroup label="ศูนย์กลางระดับจังหวัด">
+                      <option value="org-1">สำนักงานสาธารณสุขจังหวัดสตูล</option>
+                    </optgroup>
+                    <optgroup label="โรงพยาบาลทั่วไปและโรงพยาบาลชุมชน (7 แห่ง)">
+                      {organizations
+                        .filter((o) => o.type === 'HOSPITAL')
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name} ({o.district})
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="สำนักงานสาธารณสุขอำเภอ (7 แห่ง)">
+                      {organizations
+                        .filter((o) => o.type === 'DHO')
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.name} ({o.district})
+                          </option>
+                        ))}
+                    </optgroup>
+                  </select>
+                ) : (
+                  <div className="bg-white border border-slate-200 rounded-lg p-2.5 text-xs flex items-center justify-between">
+                    <div>
+                      <div className="font-bold text-slate-800">{targetOrg.name}</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        รหัสหน่วยงาน: {targetOrg.code} · อำเภอ: {targetOrg.district}
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-blue-50 text-blue-800 font-semibold px-2 py-0.5 rounded border border-blue-200">
+                      {targetOrg.typeLabel}
+                    </span>
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">กลุ่มงาน/แผนกที่สังกัด *</label>
+                  <select
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800 text-xs sm:text-sm"
+                  >
+                    {targetOrg.departments.map((d) => (
+                      <option key={d} value={d}>
+                        {d}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">อาคาร / ตึก *</label>
                   <input
@@ -488,21 +585,11 @@ export const AssetCreateWizard: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">ห้อง / แผนก *</label>
+                  <label className="block font-semibold text-slate-700 mb-1">ห้อง / ตำแหน่งติดตั้ง *</label>
                   <input
                     type="text"
                     value={room}
                     onChange={(e) => setRoom(e.target.value)}
-                    className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">กลุ่มงานที่สังกัด *</label>
-                  <input
-                    type="text"
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-slate-800"
                   />
                 </div>
@@ -547,15 +634,15 @@ export const AssetCreateWizard: React.FC = () => {
               <div className="bg-slate-900 text-white rounded-xl p-4 shadow-md">
                 <div className="flex items-center justify-between text-[11px] text-slate-400 mb-2 border-b border-slate-700 pb-1">
                   <span>ตัวอย่างสติกเกอร์รหัสครุภัณฑ์ติดตัวเครื่อง (50x25 mm)</span>
-                  <span>{currentOrg}</span>
+                  <span className="font-semibold text-sky-300">{targetOrg.name}</span>
                 </div>
                 <div className="bg-white text-slate-900 p-3 rounded-lg border-2 border-slate-800 flex items-center justify-between gap-3">
                   <div className="space-y-1">
                     <div className="text-[10px] font-bold text-slate-500 uppercase">
-                      {currentOrg}
+                      {targetOrg.name}
                     </div>
                     <div className="font-mono text-sm sm:text-base font-black text-blue-900 tracking-tight">
-                      10670-{categoryCode}-001-XXXX/{String(fiscalYear).slice(-2)}
+                      {targetOrg.code}-{categoryCode}-001-XXXX/{String(fiscalYear).slice(-2)}
                     </div>
                     <div className="text-xs font-semibold text-slate-800 line-clamp-1">
                       {assetName || 'เครื่องวัดความดันโลหิตอัตโนมัติ'}
@@ -576,6 +663,14 @@ export const AssetCreateWizard: React.FC = () => {
                   สรุปรายละเอียดการขึ้นทะเบียน
                 </div>
                 <div className="grid grid-cols-2 gap-2">
+                  <div className="col-span-2 sm:col-span-1">
+                    <span className="text-slate-500">หน่วยงานเจ้าของ:</span>{' '}
+                    <span className="font-bold text-blue-900">{targetOrg.name}</span>
+                  </div>
+                  <div className="col-span-2 sm:col-span-1">
+                    <span className="text-slate-500">แผนก:</span>{' '}
+                    <span className="font-semibold text-slate-900">{department}</span>
+                  </div>
                   <div>
                     <span className="text-slate-500">ชื่อรายการ:</span>{' '}
                     <span className="font-semibold text-slate-900">{assetName}</span>

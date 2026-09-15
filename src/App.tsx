@@ -18,6 +18,7 @@ import { ReportsView } from './components/views/ReportsView';
 import { RoadmapView } from './components/views/RoadmapView';
 import { AssetCreateWizard } from './components/modals/AssetCreateWizard';
 import { AssetDetailModal } from './components/modals/AssetDetailModal';
+import { LoginModal } from './components/modals/LoginModal';
 
 const MainLayout: React.FC = () => {
   const { activeView } = useApp();
@@ -67,6 +68,7 @@ const MainLayout: React.FC = () => {
       {/* Modals */}
       <AssetCreateWizard />
       <AssetDetailModal />
+      <LoginModal />
     </div>
   );
 };
